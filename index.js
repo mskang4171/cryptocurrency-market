@@ -32,13 +32,27 @@ const authentication = async (req, res, next) => {
   next();
 };
 
-// const retrieveAssets = async (req, res, next) => {
-//   const assets = await Asset.find({ user: req.user });
-//   if (!assets) return res.sendStatus(404);
+const retrieveAssets = async (req, res, next) => {
+  const assets = await Asset.find({ user: req.user });
+  if (!assets) return res.sendStatus(404);
+  const organizedAssets = {};
+  for (const asset of assets) {
+    const coin = await Coin.findById(asset.coin);
+    organizedAssets[coin.code] = asset.quantity;
+  }
+  req.assets = organizedAssets;
+  next();
+};
 
-//   req.assets = assets;
-//   next();
-// };
+const retrievePrice = async (req, res, next) => {
+  const code = req.params.coin_name;
+  const coin = await Coin.findOne({ code });
+  const price = await CoinGeckoClient.simple.price({
+    ids: coin.name,
+  });
+  req.price = price.data[coin.name].usd;
+  next();
+};
 
 app.post(
   "/register",
@@ -67,7 +81,7 @@ app.post(
     const asset = new Asset({ user, coin, quantity: 10000 });
     await asset.save();
 
-    return res.status(200).json({});
+    return res.send({});
   }
 );
 // 4xx => client error
@@ -94,17 +108,12 @@ app.get("/coins", async (req, res) => {
   res.send(codes);
 });
 
-// app.get("/assets", authentication, retrieveAssets, async (req, res) => {
-//   res.send(req.assets);
-// });
+app.get("/assets", authentication, retrieveAssets, async (req, res) => {
+  res.send(req.assets);
+});
 
-app.get("/coins/:coin_name", async (req, res) => {
-  const coin_name = req.params.coin_name;
-  const data = await CoinGeckoClient.simple.price({
-    ids: `${coin_name}`,
-  });
-  const price = data["data"][coin_name]["usd"];
-  res.send({ price });
+app.get("/coins/:coin_name", retrievePrice, async (req, res) => {
+  res.send({ price: req.price });
 });
 
 app.post("coins/:code/buy", async (req, res) => {});
